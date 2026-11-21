@@ -1,0 +1,25 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate configuration and alert rules
+        run: |
+          scripts/init-env
+          set -a
+          source .env
+          set +a
+          scripts/render
+          docker network create "$API_NETWORK"
+          docker compose config -q
+          shellcheck scripts/init-env scripts/up
+          docker compose run --rm --no-deps --entrypoint promtool prometheus check rules /etc/prometheus/alerts.yml
+        env:
+          API_NETWORK: portfolio-api_default
