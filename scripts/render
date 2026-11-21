@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""Generate service discovery and select the configured alert receiver."""
+import json
+import os
+from pathlib import Path
+
+root = Path(".runtime")
+root.mkdir(exist_ok=True, mode=0o700)
+targets = root / "discovery"
+targets.mkdir(exist_ok=True)
+for existing in [root / "alertmanager.json", root / "telegram-token", targets / "api.json", targets / "web.json"]:
+    if existing.exists():
+        existing.chmod(0o600)
+(targets / "api.json").write_text(json.dumps([{"targets": [os.environ["API_METRICS_TARGET"]]}]))
+urls = [os.environ["SITE_HEALTH_URL"]]
+if url := os.getenv("SITE_HTTPS_URL"):
+    urls.append(url)
+(targets / "web.json").write_text(json.dumps([{"targets": urls}]))
+receiver = {"name": "portfolio", "webhook_configs": [{"url": "http://receiver:8080/alerts"}]}
+token, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
+if bool(token) != bool(chat):
+    raise SystemExit("Set both TELEGRAM_CHAT_ID and TELEGRAM_BOT_TOKEN")
+(root / "telegram-token").write_text(token or "")
+if token:
+    receiver["telegram_configs"] = [{"bot_token_file": "/run/secrets/telegram_token",
+                                      "chat_id": int(chat), "send_resolved": True}]
+config = {"route": {"receiver": "portfolio", "group_by": ["alertname"], "group_wait": "5s",
+                    "group_interval": "30s", "repeat_interval": "4h"}, "receivers": [receiver]}
+(root / "alertmanager.json").write_text(json.dumps(config))
+for file in [root / "alertmanager.json", root / "telegram-token", *targets.iterdir()]:
+    file.chmod(0o444)
+targets.chmod(0o755)

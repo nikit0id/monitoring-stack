@@ -1,0 +1,23 @@
+groups:
+  - name: portfolio
+    rules:
+      - alert: HostDown
+        expr: up{job="node"} == 0
+        for: 30s
+        annotations:
+          summary: "node_exporter на {{ $labels.instance }} недоступен"
+      - alert: DiskUsageHigh
+        expr: 1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes > 0.85
+        for: 5m
+      - alert: CpuUsageHigh
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.85
+        for: 5m
+      - alert: SiteDown
+        expr: probe_success{job="web"} == 0
+        for: 1m
+      - alert: CertificateExpiring
+        expr: probe_ssl_earliest_cert_expiry - time() < 14 * 86400
+        for: 5m
+      - alert: BackupOverdue
+        expr: (time() - portfolio_pg_backup_last_success_timestamp_seconds > 36 * 3600) or absent(portfolio_pg_backup_last_success_timestamp_seconds)
+        for: 15m
