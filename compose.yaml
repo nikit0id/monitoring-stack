@@ -13,7 +13,7 @@ services:
     pid: host
     command: ["--path.rootfs=/host", "--collector.textfile.directory=/textfile"]
     volumes:
-      - /:/host:ro,rslave
+      - /:/host:ro
       - ${BACKUP_METRICS_DIR:-./.runtime/textfile}:/textfile:ro
   blackbox:
     image: prom/blackbox-exporter:v0.27.0
@@ -32,6 +32,29 @@ services:
       - ./.runtime/alertmanager.json:/etc/alertmanager/config.json:ro
       - ./.runtime/telegram-token:/run/secrets/telegram_token:ro
       - alertdata:/alertmanager
+  grafana:
+    image: grafana/grafana:12.1.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run scripts/init-env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3000}:3000"]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/dashboards:ro
+      - grafanadata:/var/lib/grafana
+  loki:
+    image: grafana/loki:3.5.0
+    command: ["-config.file=/etc/loki/portfolio.yml"]
+    volumes:
+      - ./logs/loki.yml:/etc/loki/portfolio.yml:ro
+      - lokidata:/loki
+  promtail:
+    image: grafana/promtail:3.5.0
+    command: ["-config.file=/etc/promtail/portfolio.yml"]
+    volumes:
+      - ./logs/promtail.yml:/etc/promtail/portfolio.yml:ro
+      - /var/log:/hostlogs:ro
+      - positions:/positions
 networks:
   api_net:
     external: true
@@ -39,3 +62,6 @@ networks:
 volumes:
   promdata:
   alertdata:
+  grafanadata:
+  lokidata:
+  positions:
