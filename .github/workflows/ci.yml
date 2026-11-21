@@ -35,5 +35,7 @@ jobs:
           docker compose -p portfolio-api up -d --build --wait
       - name: Verify dashboard, scrape and incident delivery
         run: |
+          export LOG_PROBE="portfolio-ci-log-$GITHUB_RUN_ID"
+          echo "$LOG_PROBE" | sudo tee /var/log/portfolio-monitoring-check.log >/dev/null
           scripts/up
           scripts/verify

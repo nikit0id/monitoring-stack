@@ -5,16 +5,28 @@ set -a
 # shellcheck disable=SC1091
 source .env
 set +a
-prom="http://127.0.0.1:$PROM_PORT"
 grafana="http://127.0.0.1:$GRAFANA_PORT"
 curl -fsS --retry 30 --retry-all-errors --retry-delay 2 -u "admin:$GRAFANA_PASSWORD" \
     "$grafana/api/dashboards/uid/portfolio" | jq -e '.dashboard.panels | length >= 6'
 for attempt in $(seq 1 45); do
     if curl -fsSG --data-urlencode 'query=up{job="portfolio-api"} + on() min(probe_success)' \
-        "$prom/api/v1/query" | jq -e '.data.result[0].value[1]=="2"' > /dev/null; then break; fi
+        -u "admin:$GRAFANA_PASSWORD" "$grafana/api/datasources/proxy/uid/prom/api/v1/query" | jq -e '.data.result[0].value[1]=="2"' > /dev/null; then break; fi
     if [[ $attempt == 45 ]]; then exit 1; fi
     sleep 2
 done
+if [[ -n ${LOG_PROBE:-} ]]; then
+    for attempt in $(seq 1 50); do
+        if curl -fsSG -u "admin:$GRAFANA_PASSWORD" \
+            --data-urlencode "query={job=\"hostlogs\"} |= \"$LOG_PROBE\"" \
+            "$grafana/api/datasources/proxy/uid/loki/loki/api/v1/query_range" | \
+            jq -e '.data.result | length > 0' >/dev/null; then
+            echo 'Grafana retrieved the test log line through Loki'
+            break
+        fi
+        if [[ $attempt == 50 ]]; then exit 1; fi
+        sleep 2
+    done
+fi
 docker compose stop node
 trap 'docker compose start node >/dev/null' EXIT
 for attempt in $(seq 1 60); do
