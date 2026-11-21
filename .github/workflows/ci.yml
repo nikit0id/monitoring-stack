@@ -17,9 +17,23 @@ jobs:
           source .env
           set +a
           scripts/render
-          docker network create "$API_NETWORK"
           docker compose config -q
-          shellcheck scripts/init-env scripts/up
-          docker compose run --rm --no-deps --entrypoint promtool prometheus check rules /etc/prometheus/alerts.yml
+          shellcheck scripts/init-env scripts/up scripts/verify
+          docker run --rm -v "$PWD/prometheus:/rules:ro" --entrypoint promtool prom/prometheus:v3.5.0 check rules /rules/alerts.yml
         env:
           API_NETWORK: portfolio-api_default
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nikit0id/portfolio-api
+          ref: 16b7da9ccb89279e4e3469fde974613fc464625e
+          path: api
+      - name: Start the real API
+        working-directory: api
+        run: |
+          scripts/init-env
+          docker compose -p portfolio-api up -d --build --wait
+      - name: Verify dashboard, scrape and incident delivery
+        run: |
+          scripts/up
+          scripts/verify

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Run against the local lab with the stack up.
+set -euo pipefail
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+prom="http://127.0.0.1:$PROM_PORT"
+grafana="http://127.0.0.1:$GRAFANA_PORT"
+curl -fsS --retry 30 --retry-all-errors --retry-delay 2 -u "admin:$GRAFANA_PASSWORD" \
+    "$grafana/api/dashboards/uid/portfolio" | jq -e '.dashboard.panels | length >= 6'
+for attempt in $(seq 1 45); do
+    if curl -fsSG --data-urlencode 'query=up{job="portfolio-api"} + on() min(probe_success)' \
+        "$prom/api/v1/query" | jq -e '.data.result[0].value[1]=="2"' > /dev/null; then break; fi
+    if [[ $attempt == 45 ]]; then exit 1; fi
+    sleep 2
+done
+docker compose stop node
+trap 'docker compose start node >/dev/null' EXIT
+for attempt in $(seq 1 60); do
+    if docker compose logs receiver | grep -q 'firing HostDown'; then
+        echo 'Alertmanager delivered firing HostDown to the local receiver'
+        exit 0
+    fi
+    sleep 2
+done
+exit 1
